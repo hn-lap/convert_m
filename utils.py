@@ -1,23 +1,40 @@
 import contextlib
 import inspect
 import logging
+import os
 import time
 from pathlib import Path
 
 import pandas as pd
 import torch
-from torch.utils.mobile_optimizer import optimize_for_mobile
 
-LOGGER = logging.getLogger("yolov5")
+VERBOSE = str(os.getenv("VERBOSE", True)).lower() == "true"
+
+
+def set_logging(name=None, verbose=VERBOSE):
+    rank = int(os.getenv("RANK", -1))  # rank in world for Multi-GPU trainings
+    level = logging.INFO if verbose and rank in {-1, 0} else logging.ERROR
+    log = logging.getLogger(name)
+    log.setLevel(level)
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    handler.setLevel(level)
+    log.addHandler(handler)
+
+
+set_logging()  # run before defining LOGGER
+LOGGER = logging.getLogger("convert model")
+
 
 def export_formats():
     x = [
-        ["PyTorch", "-", ".pt", True, True],
+        ["PyTorch", "-", ".pth", True, True],
         ["TorchScript", "torchscript", ".torchscript", True, True],
         ["ONNX", "onnx", ".onnx", True, True],
         ["TensorRT", "engine", ".engine", False, True],
     ]
     return pd.DataFrame(x, columns=["Format", "Argument", "Suffix", "CPU", "GPU"])
+
 
 def colorstr(*input):
     # Colors a string https://en.wikipedia.org/wiki/ANSI_escape_code, i.e.  colorstr('blue', 'hello world')

@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 import torchvision
-
+import warnings
+warnings.filterwarnings("ignore")
 
 class DenseNet121(nn.Module):
     def __init__(self, classCount, isTrained):
-
         super(DenseNet121, self).__init__()
         self.densenet121 = torchvision.models.densenet121(pretrained=isTrained)
         kernelCount = self.densenet121.classifier.in_features
@@ -18,19 +18,36 @@ class DenseNet121(nn.Module):
         x = self.densenet121(x)
         return x
 
-# ckpt = torch.load('/home/eco0936_namnh/hn_lap/export_dl/m-30092022-104001.pth.tar')
-# # print(ckpt.keys())
-# # print(ckpt['state_dict'])
-model = DenseNet121(classCount=14,isTrained=False)
-# model.load_state_dict(ckpt['state_dict'])
-
-# torch.save(model,'densenet121.pth')
+def test_model_jit(model,imsz):
+    net = torch.jit.load(model)
+    im = torch.zeros(1, 3, *imsz).to(torch.device('cuda'))
+    out = net(im.float())
+    return out
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def test_model_onnx(model):
+    import onnxruntime as rt
+    import numpy as np  
+    session = rt.InferenceSession(
+            model, sess_options=rt.SessionOptions(), providers=["CUDAExecutionProvider",'CPUExecutionProvider']
+        )
+    input_shape = session.get_inputs()[0].shape
+    input_name = session.get_inputs()[0].name
+    output_name = session.get_outputs()[0].name
 
-model = torch.load('./densenet121.pth',map_location=device)
-print(model)
-im = torch.zeros(1, 3, 224,224).to(device).float()
-out = model(im)
-print(out)
+    im = np.zeros(input_shape)
+    im = im.astype(np.float32)
+    results = session.run([output_name], {input_name: im})
+    return results
+
+def test_model_onnx_v2(model):
+    import onnx
+    model_onnx = onnx.load(model)
+    onnx.checker.check_model(model_onnx)
+    print(onnx.helper.printable_graph(model_onnx.graph))
+
+def test_model_tensorrt(model):
+    pass 
+
+if __name__ == "__main__":
+    test_model_onnx_v2('./densenet121.onnx')
