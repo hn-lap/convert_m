@@ -75,18 +75,20 @@ def export_onnx(
 
     return f, model_onnx
 
+
 @try_export
 def export_engine(
     model: torch.ModuleDict,
-    file:Path, 
+    file: Path,
     im: torch.Tensor,
     dynamic: bool,
     verbose: bool = False,
     workspace: int = 4,
     prefix=colorstr("TensorRT:"),
 ):
-    assert (im.device.type != "cpu"), "export running on CPU but must be on GPU"
+    assert im.device.type != "cpu", "export running on CPU but must be on GPU"
     import tensorrt as trt
+
     export_onnx(model, im, file, 13, False, dynamic)
     onnx = file.with_suffix(".onnx")
     LOGGER.info(f"\n{prefix} starting export with TensorRT {trt.__version__}...")
@@ -95,7 +97,7 @@ def export_engine(
     logger = trt.Logger(trt.Logger.INFO)
     if verbose:
         logger.min_severity = trt.Logger.Severity.VERBOSE
-    
+
     builder = trt.Builder(logger)
     config = builder.create_builder_config()
     config.max_workspace_size = workspace * 1 << 30
@@ -104,7 +106,7 @@ def export_engine(
     parser = trt.OnnxParser(network, logger)
     if not parser.parse_from_file(str(onnx)):
         raise RuntimeError(f"failed to load ONNX file: {onnx}")
-    
+
     inputs = [network.get_input(i) for i in range(network.num_inputs)]
     outputs = [network.get_output(i) for i in range(network.num_outputs)]
     LOGGER.info(f"{prefix} Network Description:")
@@ -132,14 +134,13 @@ def export_engine(
             )
         config.add_optimization_profile(profile)
 
-    LOGGER.info(
-        f"{prefix} building FP 16 engine in {f}"
-    )
+    LOGGER.info(f"{prefix} building FP 16 engine in {f}")
     if builder.platform_has_fast_fp16:
         config.set_flag(trt.BuilderFlag.FP16)
     with builder.build_engine(network, config) as engine, open(f, "wb") as t:
         t.write(engine.serialize())
     return f, None
+
 
 def run(
     file_checkpoint: Path,
@@ -161,8 +162,7 @@ def run(
     ), f"ERROR: Invalid --include {include}, valid --include arguments are {fmts}"
     (jit, onnx, engine) = flags
 
-    
-    model = torch.load(file_checkpoint,map_location=device)
+    model = torch.load(file_checkpoint, map_location=device)
 
     im = torch.zeros(batch_size, 3, *imgsz).to(device)
 
@@ -181,7 +181,9 @@ def run(
     if onnx:
         f[1], _ = export_onnx(model, im, file_checkpoint, opset, train, dynamic)
     if engine:
-        f[2],_  = export_engine(model,file_checkpoint,im,dynamic,verbose = False,workspace=4)
+        f[2], _ = export_engine(
+            model, file_checkpoint, im, dynamic, verbose=False, workspace=4
+        )
 
     f = [str(x) for x in f if x]
     if any(f):
@@ -191,6 +193,7 @@ def run(
             f"\nVisualize:       https://netron.app"
         )
     return f
+
 
 def main(opt):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -203,6 +206,7 @@ def main(opt):
         optimize=opt.optimize,
     )
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -211,7 +215,7 @@ if __name__ == "__main__":
         default="densenet121.pt",
         help="model.pt path(s)",
     )
-    parser.add_argument('--batch_size',type=int,default=1,help='Batch size')
+    parser.add_argument("--batch_size", type=int, default=1, help="Batch size")
     parser.add_argument(
         "--imgsz",
         nargs="+",
@@ -225,7 +229,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--include",
         nargs="+",
-        default=["torchscript",'onnx',"engine"],
+        default=["torchscript", "onnx", "engine"],
         help="torchscript, onnx, engine",
     )
     parser.add_argument("--train", action="store_true", help="model.train() mode")
@@ -236,4 +240,3 @@ if __name__ == "__main__":
     opt = parser.parse_args()
     print(opt)
     main(opt)
-    
